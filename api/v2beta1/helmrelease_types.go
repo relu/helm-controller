@@ -241,9 +241,9 @@ type Remediation interface {
 	MustIgnoreTestFailures(bool) bool
 	MustRemediateLastFailure() bool
 	GetStrategy() RemediationStrategy
-	GetFailureCount(hr HelmRelease) int64
+	GetFailureCount(hr *HelmRelease) int64
 	IncrementFailureCount(hr *HelmRelease)
-	RetriesExhausted(hr HelmRelease) bool
+	RetriesExhausted(hr *HelmRelease) bool
 }
 
 // Install holds the configuration for Helm install actions performed for this
@@ -357,7 +357,7 @@ func (in InstallRemediation) GetStrategy() RemediationStrategy {
 }
 
 // GetFailureCount gets the failure count.
-func (in InstallRemediation) GetFailureCount(hr HelmRelease) int64 {
+func (in InstallRemediation) GetFailureCount(hr *HelmRelease) int64 {
 	return hr.Status.InstallFailures
 }
 
@@ -367,7 +367,7 @@ func (in InstallRemediation) IncrementFailureCount(hr *HelmRelease) {
 }
 
 // RetriesExhausted returns true if there are no remaining retries.
-func (in InstallRemediation) RetriesExhausted(hr HelmRelease) bool {
+func (in InstallRemediation) RetriesExhausted(hr *HelmRelease) bool {
 	return in.Retries >= 0 && in.GetFailureCount(hr) > int64(in.Retries)
 }
 
@@ -496,7 +496,7 @@ func (in UpgradeRemediation) GetStrategy() RemediationStrategy {
 }
 
 // GetFailureCount gets the failure count.
-func (in UpgradeRemediation) GetFailureCount(hr HelmRelease) int64 {
+func (in UpgradeRemediation) GetFailureCount(hr *HelmRelease) int64 {
 	return hr.Status.UpgradeFailures
 }
 
@@ -506,7 +506,7 @@ func (in UpgradeRemediation) IncrementFailureCount(hr *HelmRelease) {
 }
 
 // RetriesExhausted returns true if there are no remaining retries.
-func (in UpgradeRemediation) RetriesExhausted(hr HelmRelease) bool {
+func (in UpgradeRemediation) RetriesExhausted(hr *HelmRelease) bool {
 	return in.Retries >= 0 && in.GetFailureCount(hr) > int64(in.Retries)
 }
 
@@ -683,39 +683,30 @@ func (in HelmReleaseStatus) GetHelmChart() (string, string) {
 // HelmReleaseProgressing resets any failures and registers progress toward
 // reconciling the given HelmRelease by setting the meta.ReadyCondition to
 // 'Unknown' for meta.ProgressingReason.
-func HelmReleaseProgressing(hr HelmRelease) HelmRelease {
-	resetFailureCounts(&hr)
+func HelmReleaseProgressing(hr *HelmRelease) {
+	resetFailureCounts(hr)
 	hr.Status.Conditions = []meta.Condition{}
-	SetHelmReleaseCondition(&hr, meta.ReadyCondition, corev1.ConditionUnknown, meta.ProgressingReason, "reconciliation in progress")
-	return hr
+	SetHelmReleaseCondition(hr, meta.ReadyCondition, corev1.ConditionUnknown, meta.ProgressingReason, "reconciliation in progress")
 }
 
 // HelmReleaseNotReady registers a failed reconciliation of the given HelmRelease.
-func HelmReleaseNotReady(hr HelmRelease, reason, message string) HelmRelease {
-	SetHelmReleaseCondition(&hr, meta.ReadyCondition, corev1.ConditionFalse, reason, message)
+func HelmReleaseNotReady(hr *HelmRelease, reason, message string) {
+	SetHelmReleaseCondition(hr, meta.ReadyCondition, corev1.ConditionFalse, reason, message)
 	hr.Status.Failures++
-	return hr
 }
 
 // HelmReleaseReady registers a successful reconciliation of the given HelmRelease.
-func HelmReleaseReady(hr HelmRelease) HelmRelease {
-	resetFailureCounts(&hr)
+func HelmReleaseReady(hr *HelmRelease) {
+	resetFailureCounts(hr)
 	hr.Status.LastAppliedRevision = hr.Status.LastAttemptedRevision
-	SetHelmReleaseCondition(&hr, meta.ReadyCondition, corev1.ConditionTrue, meta.ReconciliationSucceededReason, "release reconciliation succeeded")
-	return hr
+	SetHelmReleaseCondition(hr, meta.ReadyCondition, corev1.ConditionTrue, meta.ReconciliationSucceededReason, "release reconciliation succeeded")
 }
 
 // HelmReleaseAttempted registers an attempt of the given HelmRelease with the given state.
 // and returns the modified HelmRelease and a boolean indicating a state change.
-func HelmReleaseAttempted(hr HelmRelease, revision string, releaseRevision int, valuesChecksum string) (HelmRelease, bool) {
-	changed := hr.Status.LastAttemptedRevision != revision ||
-		hr.Status.LastReleaseRevision != releaseRevision ||
-		hr.Status.LastAttemptedValuesChecksum != valuesChecksum
+func HelmReleaseAttempted(hr *HelmRelease, revision string, valuesChecksum string) {
 	hr.Status.LastAttemptedRevision = revision
-	hr.Status.LastReleaseRevision = releaseRevision
 	hr.Status.LastAttemptedValuesChecksum = valuesChecksum
-
-	return hr, changed
 }
 
 func resetFailureCounts(hr *HelmRelease) {
